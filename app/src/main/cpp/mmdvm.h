@@ -155,27 +155,8 @@ namespace BeOn {
     };
 }
 
-class OboePlayer : public oboe::AudioStreamDataCallback, oboe::AudioStreamErrorCallback {
+class OboePlayer  {
 public:
-    oboe::DataCallbackResult
-    onAudioReady(oboe::AudioStream *oboeStream, void *audioData, int32_t numFrames) override {
-        std::lock_guard<std::mutex> lock(mBufferLock);
-        //__android_log_print(ANDROID_LOG_WARN, "OboePlayer::onAudioReady",
-        //                    "numFrames: %d", numFrames);
-        int16_t *i16data = (int16_t *) audioData;
-        auto rtn = DataCallbackResult::Continue;
-
-        for (int i = 0; i < numFrames; i++) {
-            if (!mBuffer.empty()) {
-                i16data[i] = mBuffer.front();
-                mBuffer.pop();
-            } else {
-                rtn = DataCallbackResult::Stop;
-            }
-        }
-
-        return rtn;
-    };
 
     virtual ~OboePlayer() = default;
 
@@ -183,9 +164,9 @@ public:
         __android_log_print(ANDROID_LOG_WARN, "OboePlayer::OboePlayer",
                             "constructor");
         pAmbeVocoder = new BeOn::AmbeVocoder(AmbeVocoderRate::HALF_RATE);
-        pAmbeVocoder->disablePostDecodeCompression();
-        pAmbeVocoder->encodeInit();
+//        pAmbeVocoder->disablePostDecodeCompression();
         pAmbeVocoder->decodeInit();
+
         __android_log_print(ANDROID_LOG_WARN, "OboePlayer::OboePlayer",
                             "AmbeVocoder type:%d sample-rate:%d max-frame-length:%d max-frame-length-in-bytes:%d",
                             pAmbeVocoder->getType(), pAmbeVocoder->getSampleRate(),
@@ -194,55 +175,18 @@ public:
         );
     }
 
-    int32_t prepareAudio() {
-        __android_log_print(ANDROID_LOG_WARN, "OboePlayer::startAudio",
-                            "prepareAudio");
-        std::lock_guard<std::mutex> lock(mStreamLock);
-        oboe::AudioStreamBuilder builder;
-        oboe::Result result = builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
-                ->setDirection(oboe::Direction::Output)
-                ->setSharingMode(oboe::SharingMode::Shared)
-                ->setFormat(oboe::AudioFormat::I16)
-                ->setChannelCount(oboe::ChannelCount::Mono)
-                ->setSampleRate(8000)
-                ->setSampleRateConversionQuality(SampleRateConversionQuality::Medium)
-                ->setDataCallback(this)
-                ->openStream(mStream);
 
-        return (int32_t) result;
-    };
-
-    int32_t startAudio() {
-        __android_log_print(ANDROID_LOG_WARN, "OboePlayer::startAudio",
-                            "startAudio");
-        std::lock_guard<std::mutex> lock(mStreamLock);
-        return (int32_t) (mStream == NULL ? Result::ErrorNull : mStream->requestStart());
-    }
-
-    void addSamples(short const samples[], uint16_t const amount) {
-        __android_log_print(ANDROID_LOG_WARN, "OboePlayer::addSamples",
-                            "addSamples amount:%d", amount);
-        std::lock_guard<std::mutex> lock(mBufferLock);
-        for (int i = 0; i < amount; i++) {
-            //__android_log_print(ANDROID_LOG_WARN, "OboePlayer::addSamples", "short value %d", samples[i]);
-            mBuffer.push(static_cast<short>(samples[i]));
-        }
-    }
-
-    void addAmbeSamples(unsigned char const *ambeData) {
+    short *decodeAmbeSamples(const unsigned char *ambeData) {
         short decoded[160] = {0};
         uint64_t decode_ret = pAmbeVocoder->decode(ambeData, 0, decoded);
         __android_log_print(ANDROID_LOG_WARN, "OboePlayer::addAmbeSamples",
                             "pAmbeVocoder->decode returned %lu", decode_ret);
-        this->addSamples(decoded, decode_ret);
+        return decoded;
     }
 
 private:
-    std::mutex mStreamLock;
-    std::mutex mBufferLock;
-    std::shared_ptr<oboe::AudioStream> mStream;
-    std::queue<int16_t> mBuffer;
     BeOn::AmbeVocoder *pAmbeVocoder;
+
 
 };
 
